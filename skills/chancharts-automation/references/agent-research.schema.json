@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "chancharts:contracts/agent_research_input_v1.schema.json",
+  "title": "AGENT_RESEARCH_INPUT_V1",
+  "description": "External agent research input contract for ChanCharts Customer Report V1.1. Authoritative validation lives in tools/agent_research_input.py; this schema is the machine-readable reference. Semantics NOT expressible in Draft-07 and enforced only by the Python validator: (1) all timestamps must be timezone-aware; (2) temporal ordering published_at <= observed_at <= contract.asof (the last bound applies to customer-visible supported claims) and observed_at <= generated_at; (3) placeholder publisher matching is case-insensitive for ASCII entries; (4) URL fake-host rejection beyond the pattern below; (5) contract asof must equal the report evidence asof at renderer integration; (6) agent symbols must be a subset of the report universe.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generated_at", "asof", "generator", "stocks"],
+  "properties": {
+    "schema": {"const": "AGENT_RESEARCH_INPUT_V1"},
+    "generated_at": {"type": "string", "format": "date-time", "description": "Timezone-aware ISO-8601 timestamp"},
+    "asof": {"type": "string", "format": "date-time", "description": "Timezone-aware ISO-8601 report cutoff; must equal evidence asof at renderer integration"},
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "version"],
+      "properties": {
+        "type": {"const": "agent"},
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "notes": {"type": "string"},
+    "stocks": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/stock"}
+    }
+  },
+  "definitions": {
+    "stock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol"],
+      "properties": {
+        "symbol": {"type": "string", "pattern": "^[0-9]{6}\\.(SH|SZ)$"},
+        "discussion": {"$ref": "#/definitions/claimOrList"},
+        "comment": {"$ref": "#/definitions/claimOrList"},
+        "logic": {"$ref": "#/definitions/claimOrList"},
+        "risks": {"$ref": "#/definitions/claimOrList"},
+        "conditions": {"$ref": "#/definitions/claimOrList"},
+        "moneyflow_observations": {"$ref": "#/definitions/claimOrList"},
+        "company_events": {"$ref": "#/definitions/claimOrList"}
+      }
+    },
+    "claimOrList": {
+      "oneOf": [
+        {"$ref": "#/definitions/claim"},
+        {"type": "array", "items": {"$ref": "#/definitions/claim"}}
+      ]
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement_type", "status"],
+      "properties": {
+        "text": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "null"}
+          ],
+          "description": "Customer-visible text; required non-empty when status=supported, optional neutral note when unavailable"
+        },
+        "statement_type": {"enum": ["fact", "inference", "opinion"]},
+        "status": {"enum": ["supported", "unavailable"]},
+        "sources": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/source"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "supported"}}},
+          "then": {
+            "required": ["text"],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "description": "required non-empty, non-whitespace-only when status=supported"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {"const": "supported"},
+              "statement_type": {"enum": ["fact", "inference"]}
+            }
+          },
+          "then": {
+            "required": ["sources"],
+            "properties": {
+              "sources": {
+                "type": "array",
+                "minItems": 1,
+                "description": "sources property itself required AND at least one valid source when supported fact/inference"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "url", "publisher", "observed_at"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "url": {
+          "type": "string",
+          "pattern": "^https?://[^/@\\s]+\\.[^/@\\s]+([/:?#][^\\s]*)?$",
+          "description": "Normal http/https URL; userinfo (user:pass@) is rejected, as are placeholder hosts"
+        },
+        "publisher": {
+          "type": "string",
+          "minLength": 1,
+          "not": {"enum": ["unknown", "none", "internet", "news", "不明", "不明来源", "未知"]}
+        },
+        "published_at": {
+          "oneOf": [
+            {"type": "string", "format": "date-time"},
+            {"type": "null"}
+          ],
+          "description": "Timezone-aware ISO-8601 or explicit null; must not be later than observed_at"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timezone-aware ISO-8601; must not be later than generated_at, nor later than the report cutoff on customer-visible supported claims"
+        }
+      }
+    }
+  }
+}
